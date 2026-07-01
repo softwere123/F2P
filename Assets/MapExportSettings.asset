@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1684903745, guid: 19ec68be91041e2409cbfcf57d531f17, type: 3}
+  m_Name: MapExportSettings
+  m_EditorClassIdentifier: 
+  scenesToExport:
+  - Assets/Scenes/MyFirstScnce.unity
+  initialScenes:
+  - Assets/Scenes/MyFirstScnce.unity
+  maxPlayers: 10
+  availableGameModes: 
+  defaultGameMode: 0
+  disableHoldingHandsAllGameModes: 0
+  disableHoldingHandsCustomOnly: 0
+  customGamemode: {fileID: 0}
+  devMode: 0
+  watchHoldDuration: 0.5
+  watchShouldTagPlayer: 0
+  watchShouldKickPlayer: 0
+  watchInfectionOverride: 0
+  watchHoldDuration_Infection: 0.5
+  watchShouldTagPlayer_Infection: 0
+  watchShouldKickPlayer_Infection: 0
+  watchCustomModeOverride: 0
+  watchHoldDuration_CustomMode: 0.5
+  watchShouldTagPlayer_CustomMode: 0
+  watchShouldKickPlayer_CustomMode: 0
+  useUberShaderDynamicLighting: 0
+  uberShaderAmbientDynamicLight: {r: 0, g: 0, b: 0, a: 1}
