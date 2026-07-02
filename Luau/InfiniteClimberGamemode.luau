@@ -2,17 +2,23 @@
 -- Implements: STEP1 scoring platforms w/ pooling+recycle, STEP2 rising death zone + reset,
 -- STEP3 in-run buff gacha at score thresholds, STEP4 post-death cosmetic-reward gacha.
 --
+-- All touch detection is proximity-based (distance checks against LocalPlayer.leftHandPosition/
+-- rightHandPosition/bodyPosition each tick) rather than LuauTrigger/:onTouched() callbacks. This
+-- means every required scene object is a plain GameObject - no LuauTrigger component needed
+-- anywhere, so the whole setup can be built without any Editor-only component wiring.
+--
 -- Required objects in the initial scene (see setup notes at the bottom of this file):
---   SpawnPoint            - plain GameObject, respawn target
---   Platform_1..Platform_N - platforms with a trigger Collider + LuauTrigger component
---   DeathZone              - large volume with a trigger Collider + LuauTrigger component
---   CosmeticReward_1..3     - template objects to clone as gacha rewards (not Static)
---   RewardPedestal          - plain GameObject, where granted rewards are placed
+--   CustomMapSpawnPoint     - respawn target (the standard CustomMapSpawnPoint prefab works)
+--   Platform_1..Platform_N  - solid (non-trigger) platforms, not Static
+--   DeathZone                - a plain GameObject; death fires once the player's Y drops to/below it
+--   CosmeticReward_1..3      - template objects to clone as gacha rewards, not Static
+--   RewardPedestal            - plain GameObject, where granted rewards are placed
 
 -- ================= CONFIG =================
 local VERTICAL_SPACING = 2.5
 local RECYCLE_MARGIN_BELOW_PLAYER = 4.0
 local HORIZONTAL_RANGE = 2.0
+local PLATFORM_TOUCH_RADIUS = 1.0
 
 local DEATHZONE_RISE_SPEED = 1.0
 local DEATHZONE_OFFSET_BELOW_PLAYER = 5.0
@@ -109,10 +115,24 @@ function onPlatformTouched(entry)
 	addScore(1)
 end
 
--- Recycle any platform that has fallen too far below the player back to the top of the stack.
+-- Hand/body proximity check against one platform, in place of a trigger callback.
+function isPlayerTouchingPlatform(entry)
+	local pos = entry.obj.position
+	if Vec3.distance(pos, LocalPlayer.bodyPosition) <= PLATFORM_TOUCH_RADIUS then return true end
+	if Vec3.distance(pos, LocalPlayer.leftHandPosition) <= PLATFORM_TOUCH_RADIUS then return true end
+	if Vec3.distance(pos, LocalPlayer.rightHandPosition) <= PLATFORM_TOUCH_RADIUS then return true end
+	return false
+end
+
+-- Each tick: score untouched platforms the player is near, and recycle any platform that has
+-- fallen too far below the player back to the top of the stack.
 function updatePlatforms()
 	local playerY = LocalPlayer.bodyPosition.y
 	for _, entry in ipairs(platforms) do
+		if not entry.touched and isPlayerTouchingPlatform(entry) then
+			onPlatformTouched(entry)
+		end
+
 		if entry.obj.position.y < playerY - RECYCLE_MARGIN_BELOW_PLAYER then
 			local newY = highestPlatformY() + VERTICAL_SPACING
 			entry.obj.position = randomizedPosition(newY)
@@ -192,15 +212,15 @@ function updateDeathZone(dt)
 	if deathZone == nil then return end
 
 	local targetY = LocalPlayer.bodyPosition.y - DEATHZONE_OFFSET_BELOW_PLAYER
-	if targetY <= deathZone.position.y then return end -- ratchet: never move back down
+	if targetY > deathZone.position.y then -- ratchet: never move back down
+		local pos = deathZone.position
+		local newY = math.min(targetY, pos.y + DEATHZONE_RISE_SPEED * dt)
+		deathZone.position = Vec3.new(pos.x, newY, pos.z)
+	end
 
-	local pos = deathZone.position
-	local newY = math.min(targetY, pos.y + DEATHZONE_RISE_SPEED * dt)
-	deathZone.position = Vec3.new(pos.x, newY, pos.z)
-end
-
-function onDeathZoneTouched()
-	handlePlayerDeath()
+	if LocalPlayer.bodyPosition.y <= deathZone.position.y then
+		handlePlayerDeath()
+	end
 end
 
 function handlePlayerDeath()
@@ -278,9 +298,9 @@ function initGame()
 		return
 	end
 
-	spawnPoint = GameObject.findGameObject("SpawnPoint")
+	spawnPoint = GameObject.findGameObject("CustomMapSpawnPoint")
 	if spawnPoint == nil then
-		print("[initGame] SpawnPoint not found yet, retrying...")
+		print("[initGame] CustomMapSpawnPoint not found yet, retrying...")
 		setTimeout(1, initGame)
 		return
 	end
@@ -296,16 +316,8 @@ function initGame()
 	rewardPedestal = GameObject.findGameObject("RewardPedestal")
 	findCosmetics()
 
-	if deathZone ~= nil then
-		deathZone:onTouched(onDeathZoneTouched)
-	else
+	if deathZone == nil then
 		print("[initGame] WARNING: DeathZone not found, falling off will not end the run")
-	end
-
-	for _, entry in ipairs(platforms) do
-		entry.obj:onTouched(function()
-			onPlatformTouched(entry)
-		end)
 	end
 
 	arrangeInitialStack()
@@ -330,21 +342,20 @@ initGame()
 --[[
 	SETUP CHECKLIST (do this in the Unity Editor, in your initial scene):
 
-	1. SpawnPoint            - empty GameObject at the desired start/respawn position.
-	2. Platform_1 .. Platform_N (name them exactly this way, sequential, no gaps)
-	                          - each needs: a Collider with Is Trigger = true, PLUS a
-	                            LuauTrigger component (Add Component > search "LuauTrigger").
-	                          - must NOT be marked Static, or Lua can't move them.
-	3. DeathZone              - a large box with a trigger Collider + LuauTrigger component,
-	                            not Static, placed below your platforms.
-	4. CosmeticReward_1, CosmeticReward_2, CosmeticReward_3 (or however many you want)
-	                          - your 3 cosmetic reward prefabs/objects, NOT Static
-	                            (Lua clones and repositions them on grant).
+	All of the objects below already exist in Assets/Scenes/MyFirstScnce.unity - this list is
+	just for reference / for building a different scene from scratch.
+
+	1. CustomMapSpawnPoint  - the standard CustomMapSpawnPoint prefab instance.
+	2. Platform_1 .. Platform_N (named exactly this way, sequential, no gaps)
+	                          - solid (non-trigger) Collider, NOT Static (Lua repositions them).
+	3. DeathZone              - plain GameObject, NOT Static, placed below your platforms.
+	                            No collider needed - detection is a Y-position check.
+	4. CosmeticReward_1, CosmeticReward_2, CosmeticReward_3
+	                          - your cosmetic reward objects, NOT Static (Lua clones+moves them).
 	5. RewardPedestal (optional) - empty GameObject marking where granted rewards line up.
 
-	6. Copy this file's contents into Assets/Scripts/InfiniteClimberGamemode.txt
-	   (already done - see that file) and drag it onto the "Custom Gamemode" field
-	   of the Map Descriptor on your INITIAL scene.
+	6. This file is Assets/Scripts/InfiniteClimberGamemode.txt - already wired into the initial
+	   scene's Map Descriptor "Custom Gamemode" field.
 	7. To test in-game: select CUSTOM in the game mode selector inside the Virtual Stump,
 	   then load the map.
 --]]
